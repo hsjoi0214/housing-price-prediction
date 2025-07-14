@@ -1,12 +1,24 @@
-# preprocessing.py
+"""
+Preprocessing module for housing price prediction.
+
+Includes:
+- Feature engineering
+- Feature classification (numerical, categorical, ordinal)
+- Preprocessing pipelines with scaling, encoding, and imputation
+"""
 
 import pandas as pd
 import numpy as np
+
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder
 from sklearn.impute import SimpleImputer
 
+
+# -------------------------------
+# Define Ordinal Features & Order
+# -------------------------------
 
 ORDINAL_FEATURES = [
     'OverallQual', 'OverallCond',
@@ -20,7 +32,7 @@ ORDINAL_FEATURES = [
 ]
 
 ORDINAL_CATEGORIES = [
-    list(range(1, 11)), list(range(1, 11)),
+    list(range(1, 11)), list(range(1, 11)),  # OverallQual, OverallCond
     ['Po', 'Fa', 'TA', 'Gd', 'Ex'], ['Po', 'Fa', 'TA', 'Gd', 'Ex'],
     ['Po', 'Fa', 'TA', 'Gd', 'Ex', 'NA'], ['Po', 'Fa', 'TA', 'Gd', 'Ex', 'NA'],
     ['No', 'Mn', 'Av', 'Gd', 'NA'],
@@ -39,8 +51,15 @@ ORDINAL_CATEGORIES = [
     ['Reg', 'IR1', 'IR2', 'IR3']
 ]
 
+# ----------------------------
+# Feature Engineering Function
+# ----------------------------
 
-def add_engineered_features(df):
+def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add domain-specific and interaction features to the dataset.
+    """
+    # Basic aggregations
     df['TotalSF'] = df['1stFlrSF'] + df['2ndFlrSF'] + df['TotalBsmtSF']
     df['TotalBathrooms'] = (
         df['FullBath'] + 0.5 * df['HalfBath'] +
@@ -49,19 +68,21 @@ def add_engineered_features(df):
     df['HouseAge'] = df['YrSold'] - df['YearBuilt']
     df['RemodAge'] = df['YrSold'] - df['YearRemodAdd']
     df['GarageScore'] = df['GarageArea'] * df['GarageCars']
+
+    # Binary indicators
     df['HasPool'] = df['PoolQC'].notna().astype(int)
     df['HasFireplace'] = df['FireplaceQu'].notna().astype(int)
     df['HasGarage'] = df['GarageType'].notna().astype(int)
     df['HasBasement'] = df['BsmtQual'].notna().astype(int)
     df['HasPorch'] = (
-        (df['OpenPorchSF'] + df['EnclosedPorch'] + df['3SsnPorch'] + df['ScreenPorch']) > 0
+        (df['OpenPorchSF'] + df['EnclosedPorch'] +
+         df['3SsnPorch'] + df['ScreenPorch']) > 0
     ).astype(int)
-    return df
+
+    # Advanced interaction terms
     df['QualSF'] = df['TotalSF'] * df['OverallQual']
     df['AgeScore'] = df['HouseAge'] * df['OverallCond']
     df['LivLotRatio'] = df['GrLivArea'] / (df['LotArea'] + 1)
-    
-    # 🆕 Additional interactions
     df['GarageScorePerCar'] = df['GarageScore'] / (df['GarageCars'] + 1)
     df['BathsPerRoom'] = df['TotalBathrooms'] / (df['TotRmsAbvGrd'] + 1)
     df['OverallQualCond'] = df['OverallQual'] * df['OverallCond']
@@ -70,19 +91,27 @@ def add_engineered_features(df):
     df['AgePerGarage'] = df['HouseAge'] / (df['GarageCars'] + 1)
     df['RemodAgePerSF'] = df['RemodAge'] / (df['TotalSF'] + 1)
 
-    # 🧠 Conditional indicators (binary logic)
+    # Conditional logic
     df['IsRemodeled'] = (df['YearBuilt'] != df['YearRemodAdd']).astype(int)
     df['IsOldHouse'] = (df['HouseAge'] > 50).astype(int)
 
+    return df
 
-def classify_features(df):
+# ----------------------------
+# Feature Classification
+# ----------------------------
+
+def classify_features(df: pd.DataFrame):
+    """
+    Classify features into numerical, categorical, and ordinal groups.
+    """
     all_columns = set(df.columns) - {'SalePrice', 'Id'}
     numerics = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
     categoricals = df.select_dtypes(include='object').columns.tolist()
 
     numerical_features = sorted(list(set(numerics) - set(ORDINAL_FEATURES)))
     categorical_features = list(set(categoricals) - set(ORDINAL_FEATURES))
-    categorical_features.append('MSSubClass')  # include this explicitly
+    categorical_features.append('MSSubClass')  # Treat MSSubClass as categorical
 
     all_classified = set(numerical_features + categorical_features + ORDINAL_FEATURES)
     unclassified = sorted(list(all_columns - all_classified))
@@ -95,8 +124,14 @@ def classify_features(df):
 
     return numerical_features, categorical_features, ORDINAL_FEATURES
 
+# ----------------------------
+# Preprocessing Pipeline Builder
+# ----------------------------
 
 def build_preprocessor(numerical, categorical, ordinal):
+    """
+    Build a full preprocessor with pipelines for each feature type.
+    """
     numeric_pipeline = Pipeline([
         ('imputer', SimpleImputer(strategy='median')),
         ('scaler', StandardScaler())
@@ -122,8 +157,19 @@ def build_preprocessor(numerical, categorical, ordinal):
 
     return preprocessor
 
+# ----------------------------
+# Full Preprocessing Entry Point
+# ----------------------------
 
-def preprocess_data(csv_path):
+def preprocess_data(csv_path: str):
+    """
+    Full preprocessing routine:
+    - Loads CSV
+    - Adds features
+    - Splits X/y
+    - Classifies features
+    - Builds and applies preprocessing pipeline
+    """
     df = pd.read_csv(csv_path)
     df = add_engineered_features(df)
 
