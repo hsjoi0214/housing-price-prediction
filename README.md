@@ -11,7 +11,7 @@ The goal of this project is to accurately predict house sale prices using a comb
 To build a reliable and scalable pipeline, i followed a **3-stage filtering strategy** for feature selection combined with modular model training and evaluation.
 
 ###  Stage 1: Manual / Statistical Filtering
-- **Low variance removal**: Drop features with variance below a threshold (0.01).
+- **Low variance removal**: Drop features with variance below a threshold (0.001).
 - **Collinearity check**: Remove features with Pearson correlation > 0.95.
 - **Rationale**: This reduces redundancy, simplifies the dataset, and removes clearly irrelevant/noisy features.
 
