@@ -178,6 +178,6 @@ def preprocess_data(csv_path: str):
 
     numerical, categorical, ordinal = classify_features(X)
     preprocessor = build_preprocessor(numerical, categorical, ordinal)
-    X_preprocessed = preprocessor.fit_transform(X)
+    
 
-    return X_preprocessed, y.values, preprocessor, df, numerical, categorical, ordinal
+    return X, y.values, preprocessor, df, numerical, categorical, ordinal
