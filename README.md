@@ -8,7 +8,7 @@ The goal of this project is to accurately predict house sale prices using a comb
 
 ## Project Strategy
 
-To build a reliable and scalable pipeline, we followed a **3-stage filtering strategy** for feature selection combined with modular model training and evaluation.
+To build a reliable and scalable pipeline, i followed a **3-stage filtering strategy** for feature selection combined with modular model training and evaluation.
 
 ###  Stage 1: Manual / Statistical Filtering
 - **Low variance removal**: Drop features with variance below a threshold (0.01).
