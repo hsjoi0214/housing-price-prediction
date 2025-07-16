@@ -70,6 +70,36 @@ All experiments followed a unified preprocessing and feature filtering pipeline,
 
 ---
 
+## Feature Engineering
+
+Feature engineering played a crucial role in improving model accuracy. Beyond the raw features provided, several domain-informed transformations were added to enhance predictive signal and reduce redundancy.
+
+### Constructed Features
+
+| Feature | Description |
+|--------|-------------|
+| `TotalSF` | Combined total living area: 1stFlr + 2ndFlr + TotalBsmtSF |
+| `TotalBathrooms` | Combined count: FullBath + 0.5×HalfBath + Basement baths |
+| `HouseAge`, `RemodAge` | Years since construction and remodeling respectively |
+| `GarageScore` | Interaction: GarageArea × GarageCars |
+| `HasPool`, `HasFireplace`, `HasGarage`, `HasBasement`, `HasPorch` | Binary flags for amenity presence |
+| `QualSF` | Quality-adjusted living area: TotalSF × OverallQual |
+| `AgeScore` | Durability proxy: HouseAge × OverallCond |
+| `LivLotRatio` | Density metric: GrLivArea / LotArea |
+| `GarageScorePerCar` | Garage efficiency per vehicle |
+| `BathsPerRoom` | TotalBathrooms / TotalRooms |
+| `OverallQualCond` | Interaction: OverallQual × OverallCond |
+| `SFperRoom` | Living area per room |
+| `BasementScore` | Composite score: TotalBsmtSF × BsmtFullBath |
+| `AgePerGarage` | Aging impact per garage space |
+| `RemodAgePerSF` | Years since remodel per square foot |
+| `IsRemodeled` | Binary: whether YearBuilt ≠ YearRemodAdd |
+| `IsOldHouse` | Binary: whether house is older than 50 years |
+
+These features allowed the model to capture nonlinear patterns and higher-order interactions while remaining interpretable. Many were selected as part of the final feature set by the model-based filter.
+
+---
+
 ## Final Solution Pipeline
 
 - Data cleaned, missing values imputed
