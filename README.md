@@ -10,12 +10,12 @@ The goal of this project is to accurately predict house sale prices using a comb
 
 To build a reliable and scalable pipeline, I implemented a **2-stage filtering strategy** for feature selection combined with a modular preprocessing and modeling approach using XGBoost.
 
-###  Stage 1: Manual / Statistical Filtering
+### Stage 1: Manual / Statistical Filtering
 - **Low variance removal**: Drop features with variance below a threshold (0.01).
 - **Collinearity check**: Remove features with Pearson correlation > 0.95.
 - **Rationale**: This reduces redundancy, simplifies the dataset, and eliminates clearly irrelevant/noisy signals.
 
-###  Stage 2: Model-Based Feature Selection (SelectFromModel)
+### Stage 2: Model-Based Feature Selection (SelectFromModel)
 - Trained an XGBoost regressor and selected features with importance above a threshold (e.g. `0.001`).
 - This ensures selected features are not only statistically relevant, but actually useful to the model’s predictive performance.
 
@@ -36,7 +36,9 @@ This design avoids premature assumptions about linear relationships (as with Sel
 
 - **Languages**: Python
 - **Libraries**: scikit-learn, XGBoost, pandas, numpy, joblib
-- **Other**: KFold CV, Pipelines, FeatureUnion, ColumnTransformer, Jupyter, VSCode
+- **Web Interface**: Streamlit (for model deployment)
+- **Visualization**: matplotlib, seaborn
+- **Other**: KFold CV, Pipelines, FeatureUnion, ColumnTransformer, Jupyter, shell scripting
 
 ---
 
@@ -58,15 +60,6 @@ All experiments followed a unified preprocessing and feature filtering pipeline,
 **Best Result:**
 - Final features: **~50–60**
 - Best CV log-RMSE: **0.1349**
-
----
-
-## Lessons Learned
-
-- **Removing SelectKBest** simplified the flow and actually improved performance.
-- **Model-driven feature selection** was more aligned with true predictive power.
-- **XGBoost outperformed all other algorithms**, especially when paired with clean feature engineering.
-- **Cross-validation (KFold)** gave a more reliable evaluation than single holdout splits.
 
 ---
 
@@ -102,12 +95,12 @@ These features allowed the model to capture nonlinear patterns and higher-order 
 
 ## Final Solution Pipeline
 
-- Data cleaned, missing values imputed
-- Domain-specific feature engineering
-- 2-stage feature filtering (variance + correlation → model-based selection)
-- Target log-transformed
-- XGBoost Regressor evaluated via KFold CV
-- Predictions inverse-transformed with `np.expm1`
+- Data cleaned, missing values imputed  
+- Domain-specific feature engineering  
+- 2-stage feature filtering (variance + correlation → model-based selection)  
+- Target log-transformed  
+- XGBoost Regressor evaluated via KFold CV  
+- Predictions inverse-transformed with `np.expm1`  
 - Submission prepared for Kaggle
 
 ---
@@ -118,7 +111,33 @@ These features allowed the model to capture nonlinear patterns and higher-order 
 |------------|----------|-------------------|
 | Best Model | XGBoost-only + refined feature filtering | **0.12033** |
 | Others | Ensemble / Boosted / LightGBM / Extra Features | 0.13–0.15 range |
+
 Submission File: [`submission.csv`](./outputs/predictions/submission.csv)
+
+---
+
+## Streamlit App Deployment
+
+An interactive web app was created using **Streamlit** to allow users to simulate house characteristics and get instant sale price predictions from the trained model.
+
+### Key Features
+
+- **Two tabs**:
+  - **Predict Price** — Set inputs for house attributes (quality, area, bathrooms, etc.) and get predicted price.
+  - **Model Info** — Displays how the model was trained, and visualizes top features using bar charts.
+  
+- **Preprocessing + Feature Selection + Trained Model** runs under the hood.
+- **Minimal input requirements** to simulate a house — remaining features are automatically imputed via preprocessing.
+
+### Launch Locally
+
+Ensure the model is trained and artifacts are saved under `outputs/models/`.
+
+```bash
+streamlit run app.py
+```
+
+This will open the web interface at: http://localhost:8501
 
 ---
 
@@ -128,16 +147,25 @@ Submission File: [`submission.csv`](./outputs/predictions/submission.csv)
 housing_price_prediction/
 │
 ├── data/
-│   └── raw/                    # Contains train.csv, test.csv
+│   └── raw/                     # Original train/test CSV files
+│
+├── notebooks/                   # Jupyter notebooks for exploration (optional)
+│
 ├── outputs/
-│   └── models/                 # Stores trained model + artifacts
+│   ├── models/                  # Trained model and preprocessing artifacts
 │   └── predictions/            # Final Kaggle submission file
+│
 ├── scripts/
-│   ├── preprocess.py           # Base preprocessing module
-│   ├── feature_selector.py     # 2-stage feature filtering (Variance + Corr + XGB)
-│   ├── train_model.py          # Train using XGBoost with CV
-│   ├── predict.py              # Generates predictions from test.csv
-│   └── run_all.sh              # Shell script to run all steps
+│   ├── preprocess.py            # Preprocessing logic
+│   ├── feature_selector.py      # Variance/correlation/model-based filtering
+│   ├── train_model.py           # Train XGBoost model
+│   ├── predict.py               # Run prediction on test.csv
+│   └── run_all.sh               # End-to-end shell script
+│
+├── app.py                       # Streamlit app interface
+├── README.md
+├── requirements.txt
+├── .gitignore
 
 ```
 ---
