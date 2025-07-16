@@ -1,12 +1,3 @@
-"""
-Preprocessing module for housing price prediction.
-
-Includes:
-- Feature engineering
-- Feature classification (numerical, categorical, ordinal)
-- Preprocessing pipelines with scaling, encoding, and imputation
-"""
-
 import pandas as pd
 import numpy as np
 
@@ -14,7 +5,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder
 from sklearn.impute import SimpleImputer
-
 
 # -------------------------------
 # Define Ordinal Features & Order
@@ -56,10 +46,6 @@ ORDINAL_CATEGORIES = [
 # ----------------------------
 
 def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add domain-specific and interaction features to the dataset.
-    """
-    # Basic aggregations
     df['TotalSF'] = df['1stFlrSF'] + df['2ndFlrSF'] + df['TotalBsmtSF']
     df['TotalBathrooms'] = (
         df['FullBath'] + 0.5 * df['HalfBath'] +
@@ -69,7 +55,6 @@ def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
     df['RemodAge'] = df['YrSold'] - df['YearRemodAdd']
     df['GarageScore'] = df['GarageArea'] * df['GarageCars']
 
-    # Binary indicators
     df['HasPool'] = df['PoolQC'].notna().astype(int)
     df['HasFireplace'] = df['FireplaceQu'].notna().astype(int)
     df['HasGarage'] = df['GarageType'].notna().astype(int)
@@ -79,7 +64,6 @@ def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
          df['3SsnPorch'] + df['ScreenPorch']) > 0
     ).astype(int)
 
-    # Advanced interaction terms
     df['QualSF'] = df['TotalSF'] * df['OverallQual']
     df['AgeScore'] = df['HouseAge'] * df['OverallCond']
     df['LivLotRatio'] = df['GrLivArea'] / (df['LotArea'] + 1)
@@ -91,9 +75,29 @@ def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
     df['AgePerGarage'] = df['HouseAge'] / (df['GarageCars'] + 1)
     df['RemodAgePerSF'] = df['RemodAge'] / (df['TotalSF'] + 1)
 
-    # Conditional logic
     df['IsRemodeled'] = (df['YearBuilt'] != df['YearRemodAdd']).astype(int)
     df['IsOldHouse'] = (df['HouseAge'] > 50).astype(int)
+
+    return df
+
+# ----------------------------
+# Custom Imputation Handling
+# ----------------------------
+
+def custom_fillna(df: pd.DataFrame) -> pd.DataFrame:
+    # LotFrontage → median by Neighborhood
+    if 'Neighborhood' in df.columns and 'LotFrontage' in df.columns:
+        df['LotFrontage'] = df.groupby('Neighborhood')['LotFrontage'].transform(
+            lambda x: x.fillna(x.median())
+        )
+
+    # GarageYrBlt → impute with YearBuilt
+    if 'GarageYrBlt' in df.columns and 'YearBuilt' in df.columns:
+        df['GarageYrBlt'] = df['GarageYrBlt'].fillna(df['YearBuilt'])
+
+    # MasVnrArea → fill with 0
+    if 'MasVnrArea' in df.columns:
+        df['MasVnrArea'] = df['MasVnrArea'].fillna(0)
 
     return df
 
@@ -102,16 +106,13 @@ def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
 # ----------------------------
 
 def classify_features(df: pd.DataFrame):
-    """
-    Classify features into numerical, categorical, and ordinal groups.
-    """
     all_columns = set(df.columns) - {'SalePrice', 'Id'}
     numerics = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
     categoricals = df.select_dtypes(include='object').columns.tolist()
 
     numerical_features = sorted(list(set(numerics) - set(ORDINAL_FEATURES)))
     categorical_features = list(set(categoricals) - set(ORDINAL_FEATURES))
-    categorical_features.append('MSSubClass')  # Treat MSSubClass as categorical
+    categorical_features.append('MSSubClass')
 
     all_classified = set(numerical_features + categorical_features + ORDINAL_FEATURES)
     unclassified = sorted(list(all_columns - all_classified))
@@ -129,9 +130,6 @@ def classify_features(df: pd.DataFrame):
 # ----------------------------
 
 def build_preprocessor(numerical, categorical, ordinal):
-    """
-    Build a full preprocessor with pipelines for each feature type.
-    """
     numeric_pipeline = Pipeline([
         ('imputer', SimpleImputer(strategy='median')),
         ('scaler', StandardScaler())
@@ -162,22 +160,14 @@ def build_preprocessor(numerical, categorical, ordinal):
 # ----------------------------
 
 def preprocess_data(csv_path: str):
-    """
-    Full preprocessing routine:
-    - Loads CSV
-    - Adds features
-    - Splits X/y
-    - Classifies features
-    - Builds and applies preprocessing pipeline
-    """
     df = pd.read_csv(csv_path)
     df = add_engineered_features(df)
+    df = custom_fillna(df)
 
     X = df.drop(columns=['SalePrice'])
     y = df['SalePrice']
 
     numerical, categorical, ordinal = classify_features(X)
     preprocessor = build_preprocessor(numerical, categorical, ordinal)
-    
 
     return X, y.values, preprocessor, df, numerical, categorical, ordinal

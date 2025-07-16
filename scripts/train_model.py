@@ -1,24 +1,25 @@
-"""
-Train Model Script - House Price Prediction
-
-Refactored to avoid data leakage using a pipeline-based feature selector.
-"""
-
 import os
 import joblib
 import numpy as np
 import pandas as pd
+import xgboost as xgb
 
-from xgboost import XGBRegressor
-from sklearn.model_selection import GridSearchCV, KFold
+from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
+from sklearn.metrics import mean_squared_error
 
 from preprocess import preprocess_data
-from feature_selector import FeatureSelector  # ✅ New transformer replaces three_stage_filter
+from feature_selector import FeatureSelector
 
-# -----------------------------------------------------
-# Main Training Function
-# -----------------------------------------------------
+
+class BoosterWrapper:
+    """Wrapper to integrate xgboost.Booster into sklearn-style pipeline."""
+    def __init__(self, booster):
+        self.booster = booster
+
+    def predict(self, X):
+        return self.booster.predict(xgb.DMatrix(X))
+
 
 def train_and_save_model(
     data_path="data/raw/housing_iteration_6_regression.csv",
@@ -29,85 +30,115 @@ def train_and_save_model(
 
     # Load raw data and preprocessor
     X_raw, y_raw, preprocessor, df_raw, num, cat, ords = preprocess_data(data_path)
-
-    # Log-transform target
     y = np.log1p(y_raw)
 
-    # -----------------------------------------------------
-    # Build Full Pipeline: Preprocessing → Feature Selection → Model
-    # -----------------------------------------------------
-    print("🔍 Building pipeline...")
+    print(" Building pipeline...")
 
-    full_pipeline = Pipeline([
-        ('preprocessing', preprocessor),
-        ('feature_selection', FeatureSelector(
-            var_thresh=0.01,
-            corr_thresh=0.95,
-            k_best=100,
-            model_thresh=0.001,
-            random_state=random_state,
-            verbose=True
-        )),
-        ('regressor', XGBRegressor(objective='reg:squarederror', random_state=random_state, verbosity=0))
-    ])
+    param_grid = [
+        {
+            'max_depth': 3,
+            'learning_rate': 0.05,
+            'n_estimators': 500,
+            'subsample': 0.8,
+            'colsample_bytree': 0.8,
+            'reg_alpha': 0.1,
+            'reg_lambda': 1.0,
+            'gamma': 0.1,
+        },
+        {
+            'max_depth': 5,
+            'learning_rate': 0.05,
+            'n_estimators': 500,
+            'subsample': 1.0,
+            'colsample_bytree': 0.8,
+            'reg_alpha': 0.5,
+            'reg_lambda': 0.5,
+            'gamma': 0.0,
+        },
+    ]
 
-    # -----------------------------------------------------
-    # Grid Search CV
-    # -----------------------------------------------------
-    print("🚀 Performing GridSearchCV on full pipeline...")
+    best_score = float('inf')
+    best_model = None
+    best_params = None
 
-    param_grid = {
-        'regressor__n_estimators': [100, 200],
-        'regressor__max_depth': [3, 5, 7],
-        'regressor__learning_rate': [0.03, 0.1],
-        'regressor__subsample': [0.8, 1],
-        'regressor__colsample_bytree': [0.8, 1]
-    }
+    kf = KFold(n_splits=5, shuffle=True, random_state=random_state)
 
-    cv = KFold(n_splits=5, shuffle=True, random_state=random_state)
+    for params in param_grid:
+        print(f"\n Testing params: {params}")
+        fold_scores = []
 
-    grid = GridSearchCV(
-        full_pipeline,
-        param_grid=param_grid,
-        cv=cv,
-        n_jobs=-1,
-        scoring='neg_root_mean_squared_error',
-        verbose=1
-    )
+        for fold, (train_idx, val_idx) in enumerate(kf.split(X_raw)):
+            print(f" Fold {fold + 1}/5")
 
-    grid.fit(X_raw, y)
-    best_model = grid.best_estimator_
+            X_train, X_val = X_raw.iloc[train_idx], X_raw.iloc[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
 
-    # -----------------------------------------------------
-    # Evaluation Summary
-    # -----------------------------------------------------
-    print(f"\n✅ Best Parameters: {grid.best_params_}")
-    print(f"📉 Best CV log-RMSE: {abs(grid.best_score_):.4f}\n")
+            # Preprocess
+            X_train_proc = preprocessor.fit_transform(X_train)
+            X_val_proc = preprocessor.transform(X_val)
 
-    # -----------------------------------------------------
-    # Save Model and Artifacts
-    # -----------------------------------------------------
-    print("💾 Saving model and artifacts...")
+            # Feature selection
+            feature_selector = FeatureSelector(
+                var_thresh=0.01,
+                corr_thresh=0.95,
+                model_thresh=0.001,
+                random_state=random_state,
+                verbose=False
+            )
+            X_train_sel = feature_selector.fit_transform(X_train_proc, y_train)
+            X_val_sel = feature_selector.transform(X_val_proc)
+
+            # XGBoost via DMatrix
+            dtrain = xgb.DMatrix(X_train_sel, label=y_train)
+            dval = xgb.DMatrix(X_val_sel, label=y_val)
+
+            xgb_params = {
+                'objective': 'reg:squarederror',
+                'verbosity': 0,
+                **params
+            }
+
+            booster = xgb.train(
+                params=xgb_params,
+                dtrain=dtrain,
+                num_boost_round=params['n_estimators'],
+                evals=[(dval, 'validation')],
+                early_stopping_rounds=50,
+                verbose_eval=False
+            )
+
+            preds_val = booster.predict(dval)
+            rmse = np.sqrt(mean_squared_error(y_val, preds_val))
+            fold_scores.append(rmse)
+
+        avg_score = np.mean(fold_scores)
+        print(f"  Avg CV log-RMSE: {avg_score:.4f}")
+
+        if avg_score < best_score:
+            best_score = avg_score
+            best_params = params
+
+            # Save full pipeline with wrapped booster
+            best_model = Pipeline([
+                ('preprocessing', preprocessor),
+                ('feature_selection', feature_selector),
+                ('regressor', BoosterWrapper(booster))
+            ])
+
+    print(f"\n Best Parameters: {best_params}")
+    print(f" Best CV log-RMSE: {best_score:.4f}\n")
+
+    print(" Saving model and artifacts...")
     os.makedirs(output_dir, exist_ok=True)
-
-    # Save the full pipeline (includes preprocessor + feature selector)
     joblib.dump(best_model, f"{output_dir}/final_regression_model.pkl")
-
-    # Optionally, extract and save preprocessor + selected features separately
-    # Only if needed in predict.py
     joblib.dump(preprocessor, f"{output_dir}/preprocessor.pkl")
 
-    # Extract selected feature names
     selector = best_model.named_steps['feature_selection']
     selected_features = selector.get_feature_names_out()
     joblib.dump(selected_features, f"{output_dir}/selected_features.pkl")
 
-    print(f"📁 Model and artifacts saved in `{output_dir}/`")
+    print(f" Model and artifacts saved in `{output_dir}/`")
 
-
-# -----------------------------------------------------
-# Script Entry Point
-# -----------------------------------------------------
 
 if __name__ == "__main__":
     train_and_save_model()
