@@ -2,7 +2,7 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
-import xgboost as xgb
+from xgboost import XGBRegressor
 
 from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
@@ -12,27 +12,18 @@ from preprocess import preprocess_data
 from feature_selector import FeatureSelector
 
 
-class BoosterWrapper:
-    """Wrapper to integrate xgboost.Booster into sklearn-style pipeline."""
-    def __init__(self, booster):
-        self.booster = booster
-
-    def predict(self, X):
-        return self.booster.predict(xgb.DMatrix(X))
-
-
 def train_and_save_model(
     data_path="data/raw/housing_iteration_6_regression.csv",
     output_dir="outputs/models",
     random_state=42
 ):
-    print("🔄 Loading and preprocessing data...")
+    print("Loading and preprocessing data...")
 
     # Load raw data and preprocessor
     X_raw, y_raw, preprocessor, df_raw, num, cat, ords = preprocess_data(data_path)
     y = np.log1p(y_raw)
 
-    print(" Building pipeline...")
+    print("Building pipeline...")
 
     param_grid = [
         {
@@ -64,7 +55,7 @@ def train_and_save_model(
     kf = KFold(n_splits=5, shuffle=True, random_state=random_state)
 
     for params in param_grid:
-        print(f"\n Testing params: {params}")
+        print(f"\nTesting params: {params}")
         fold_scores = []
 
         for fold, (train_idx, val_idx) in enumerate(kf.split(X_raw)):
@@ -88,26 +79,15 @@ def train_and_save_model(
             X_train_sel = feature_selector.fit_transform(X_train_proc, y_train)
             X_val_sel = feature_selector.transform(X_val_proc)
 
-            # XGBoost via DMatrix
-            dtrain = xgb.DMatrix(X_train_sel, label=y_train)
-            dval = xgb.DMatrix(X_val_sel, label=y_val)
-
-            xgb_params = {
-                'objective': 'reg:squarederror',
-                'verbosity': 0,
+            # Train XGBoostRegressor
+            xgb_model = XGBRegressor(
+                objective='reg:squarederror',
+                verbosity=0,
                 **params
-            }
-
-            booster = xgb.train(
-                params=xgb_params,
-                dtrain=dtrain,
-                num_boost_round=params['n_estimators'],
-                evals=[(dval, 'validation')],
-                early_stopping_rounds=50,
-                verbose_eval=False
             )
+            xgb_model.fit(X_train_sel, y_train)
 
-            preds_val = booster.predict(dval)
+            preds_val = xgb_model.predict(X_val_sel)
             rmse = np.sqrt(mean_squared_error(y_val, preds_val))
             fold_scores.append(rmse)
 
@@ -118,17 +98,17 @@ def train_and_save_model(
             best_score = avg_score
             best_params = params
 
-            # Save full pipeline with wrapped booster
+            # Save full pipeline with XGBRegressor
             best_model = Pipeline([
                 ('preprocessing', preprocessor),
                 ('feature_selection', feature_selector),
-                ('regressor', BoosterWrapper(booster))
+                ('regressor', xgb_model)
             ])
 
-    print(f"\n Best Parameters: {best_params}")
-    print(f" Best CV log-RMSE: {best_score:.4f}\n")
+    print(f"\nBest Parameters: {best_params}")
+    print(f"Best CV log-RMSE: {best_score:.4f}\n")
 
-    print(" Saving model and artifacts...")
+    print("Saving model and artifacts...")
     os.makedirs(output_dir, exist_ok=True)
     joblib.dump(best_model, f"{output_dir}/final_regression_model.pkl")
     joblib.dump(preprocessor, f"{output_dir}/preprocessor.pkl")
@@ -137,7 +117,7 @@ def train_and_save_model(
     selected_features = selector.get_feature_names_out()
     joblib.dump(selected_features, f"{output_dir}/selected_features.pkl")
 
-    print(f" Model and artifacts saved in `{output_dir}/`")
+    print(f"Model and artifacts saved in `{output_dir}/`")
 
 
 if __name__ == "__main__":
