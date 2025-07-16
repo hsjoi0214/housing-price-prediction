@@ -2,36 +2,33 @@
 
 ## Objective
 
-The goal of this project is to accurately predict house sale prices using a combination of advanced preprocessing, feature engineering, and multi-stage feature selection techniques — ultimately building a high-performing regression model submitted to the Kaggle competition “House Prices: Advanced Regression Techniques”.
+The goal of this project is to accurately predict house sale prices using a combination of domain-driven feature engineering and layered feature filtering — ultimately building a high-performing regression model submitted to the Kaggle competition “House Prices: Advanced Regression Techniques”.
 
 ---
 
 ## Project Strategy
 
-To build a reliable and scalable pipeline, i followed a **3-stage filtering strategy** for feature selection combined with modular model training and evaluation.
+To build a reliable and scalable pipeline, I implemented a **2-stage filtering strategy** for feature selection combined with a modular preprocessing and modeling approach using XGBoost.
 
 ###  Stage 1: Manual / Statistical Filtering
-- **Low variance removal**: Drop features with variance below a threshold (0.001).
+- **Low variance removal**: Drop features with variance below a threshold (0.01).
 - **Collinearity check**: Remove features with Pearson correlation > 0.95.
-- **Rationale**: This reduces redundancy, simplifies the dataset, and removes clearly irrelevant/noisy features.
+- **Rationale**: This reduces redundancy, simplifies the dataset, and eliminates clearly irrelevant/noisy signals.
 
-###  Stage 2: Statistical Feature Selection (SelectKBest)
-- Applied `SelectKBest` with `f_regression` to retain only the top **K = 100** features based on statistical relationship with the target.
-- Helps eliminate statistically weak predictors before modeling begins.
-
-###  Stage 3: Model-Based Feature Selection (SelectFromModel)
-- Trained a model (RandomForest or XGBoost) and selected features with importance above a threshold (e.g. `mean`, `median`, or `0.001`).
-- This filter aligns feature importance with actual predictive performance.
+###  Stage 2: Model-Based Feature Selection (SelectFromModel)
+- Trained an XGBoost regressor and selected features with importance above a threshold (e.g. `0.001`).
+- This ensures selected features are not only statistically relevant, but actually useful to the model’s predictive performance.
 
 ---
 
-## Why This 3-Stage Approach Works
+## Why This 2-Stage Approach Works
 
 | Stage | Purpose | Benefit |
 |-------|---------|---------|
-| **1. Variance/Correlation** | Reduces feature space noise and multicollinearity | Makes model simpler and faster |
-| **2. SelectKBest** | Identifies statistically significant features | Ensures features are correlated with the target |
-| **3. SelectFromModel** | Picks features based on model’s actual usage | Captures non-linear and interaction effects |
+| **1. Variance/Correlation** | Reduces noise and multicollinearity | Simplifies feature space, avoids overfitting |
+| **2. SelectFromModel** | Uses model-driven importance | Aligns feature selection with true signal strength |
+
+This design avoids premature assumptions about linear relationships (as with SelectKBest), and instead relies on the model itself to discover complex patterns.
 
 ---
 
@@ -39,106 +36,49 @@ To build a reliable and scalable pipeline, i followed a **3-stage filtering stra
 
 - **Languages**: Python
 - **Libraries**: scikit-learn, XGBoost, pandas, numpy, joblib
-- **Other**: GridSearchCV, Pipelines, FeatureUnion, ColumnTransformer, Jupyter, VSCode
+- **Other**: KFold CV, Pipelines, FeatureUnion, ColumnTransformer, Jupyter, VSCode
 
 ---
 
 ## Experiments & Results
 
-All experiments followed the same base preprocessing pipeline, with modifications in model strategy or feature filter configuration.
+All experiments followed a unified preprocessing and feature filtering pipeline, with multiple XGBoost hyperparameter configurations evaluated via cross-validation.
 
 ---
 
-### **Experiment 1: Basic Feature Filtering + Random Forest**
+### **Current Pipeline (XGBoost + 2-Stage Feature Filtering)**
 
 **Parameters:**
 - Variance threshold: 0.01  
 - Correlation threshold: 0.95  
-- KBest = 50  
-- SelectFromModel: RandomForestRegressor (threshold = `'mean'`)
+- Model-based feature importance: threshold = `0.001`  
+- Validation: 5-Fold Cross Validation  
+- Model: XGBoost (various parameter sets tested)
 
-**Result:**
-- Final features: **2**
-- log-RMSE: **0.1843**
-- R²: **0.8179**
-- RMSE ($): **$35,505.64**
-- MAE ($): **$22,197.58**
-
----
-
-### **Experiment 2: Expanded K + Random Forest**
-
-**Parameters:**
-- KBest = 100  
-- SelectFromModel: threshold = `'median'`
-
-**Result:**
-- Final features: **50**
-- log-RMSE: **0.1496**
-- R²: **0.8801**
-- RMSE ($): **$29,945.89**
-- MAE ($): **$17,298.94**
-
----
-
-### **Experiment 3: XGBoost Replaced RF + KFold + CV Evaluation**
-
-**Changes:**
-- Model: XGBoost  
-- Validation: 5-Fold CV instead of train/test split  
-- Evaluation based on CV best_score
-
-**Result:**
-- Final features: **50**
-- Best CV log-RMSE: **0.1366**
-- 🥈 **First major improvement in leaderboard**
-
----
-
-### **Experiment 4: Lower Threshold in SelectFromModel**
-
-**Changes:**
-- SelectFromModel threshold set to **0.001** (instead of median)
-- Model: XGBoost  
-- CV evaluation only
-
-**Result:**
-- Final features: **57**
+**Best Result:**
+- Final features: **~50–60**
 - Best CV log-RMSE: **0.1349**
-
----
-
-### **Experiment 5: Ensembling (XGBoost + RF + Ridge)**
-
-**Changes:**
-- Combined predictions from 3 base models  
-- Averaged predictions for final output
-
-**Result:**
-- Final features: **57**
-- Best CV log-RMSE: **0.1349**
-- Kaggle score: Slightly worse than XGBoost-only
 
 ---
 
 ## Lessons Learned
 
--  **More features isn’t always better** — the quality of selection and modeling matter more.
--  **XGBoost outperformed all other algorithms** consistently in this tabular regression task.
--  **Using KFold CV** provided more stable and generalizable results than a fixed train/test split.
--  Ensembling didn’t improve much due to overlap in what models were learning.
--  Adding interaction features, smoothing, and outlier removal helped *slightly* or even hurt Kaggle score due to leakage risk or overfitting.
+- **Removing SelectKBest** simplified the flow and actually improved performance.
+- **Model-driven feature selection** was more aligned with true predictive power.
+- **XGBoost outperformed all other algorithms**, especially when paired with clean feature engineering.
+- **Cross-validation (KFold)** gave a more reliable evaluation than single holdout splits.
 
 ---
 
 ## Final Solution Pipeline
 
 - Data cleaned, missing values imputed
-- Manual + statistical + model-based feature filtering (a 3-filter approach)
-- Log-transformed target
-- XGBoost Regressor + GridSearchCV
-- Prediction output transformed back using `np.expm1`
-- Submission prepared and uploaded to Kaggle
+- Domain-specific feature engineering
+- 2-stage feature filtering (variance + correlation → model-based selection)
+- Target log-transformed
+- XGBoost Regressor evaluated via KFold CV
+- Predictions inverse-transformed with `np.expm1`
+- Submission prepared for Kaggle
 
 ---
 
@@ -164,8 +104,8 @@ housing_price_prediction/
 │   └── predictions/            # Final Kaggle submission file
 ├── scripts/
 │   ├── preprocess.py           # Base preprocessing module
-│   ├── three_stage_filter.py   # Feature filtering pipeline
-│   ├── train_model.py          # Train using XGB (original)
+│   ├── feature_selector.py     # 2-stage feature filtering (Variance + Corr + XGB)
+│   ├── train_model.py          # Train using XGBoost with CV
 │   ├── predict.py              # Generates predictions from test.csv
 │   └── run_all.sh              # Shell script to run all steps
 
